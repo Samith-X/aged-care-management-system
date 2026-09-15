@@ -25,13 +25,171 @@ const seed = {
   schedules: initialSchedules,
 };
 
+const cloneState = (source) => ({
+  members: (source.members || []).map((item) => ({ ...item, careTeam: [...(item.careTeam || [])], medications: (item.medications || []).map((med) => ({ ...med })) })),
+  staff: (source.staff || []).map((item) => ({ ...item, qualifications: [...(item.qualifications || [])] })),
+  services: (source.services || []).map((item) => ({ ...item, checklist: [...(item.checklist || [])], staffRequirements: [...(item.staffRequirements || [])] })),
+  rooms: (source.rooms || []).map((item) => ({ ...item })),
+  reservations: (source.reservations || []).map((item) => ({ ...item })),
+  maintenance: (source.maintenance || []).map((item) => ({ ...item })),
+  inventory: (source.inventory || []).map((item) => ({ ...item })),
+  schedules: (source.schedules || []).map((item) => ({ ...item })),
+});
+
+/**
+ * Repairs room/member/reservation relationships when older localStorage data is loaded.
+ * This is intentionally conservative: it never displaces an existing resident from a room.
+ */
+const reconcileRoomState = (source) => {
+  const current = cloneState({ ...seed, ...source });
+  const roomClaims = new Map();
+
+  // Active reservations are the strongest source of truth.
+  current.reservations
+    .filter((reservation) => reservation.status === 'Active')
+    .forEach((reservation) => {
+      const memberExists = current.members.some((member) => member.id === reservation.memberId);
+      const roomExists = current.rooms.some((room) => room.id === reservation.roomId);
+      if (memberExists && roomExists && !roomClaims.has(reservation.roomId)) {
+        roomClaims.set(reservation.roomId, reservation.memberId);
+      }
+    });
+
+  // Existing room resident IDs are next.
+  current.rooms.forEach((room) => {
+    const memberExists = current.members.some((member) => member.id === room.residentId);
+    if (room.residentId && memberExists && !roomClaims.has(room.id)) {
+      roomClaims.set(room.id, room.residentId);
+    }
+  });
+
+  // Finally repair the old prototype behaviour where a member could contain a room number
+  // without the Facility module being updated.
+  current.members.forEach((member) => {
+    if (!member.room || member.room === 'Unassigned') return;
+    const room = current.rooms.find((item) => item.number === member.room);
+    if (!room || room.status === 'Maintenance') return;
+    const existingClaim = roomClaims.get(room.id);
+    if (!existingClaim || existingClaim === member.id) roomClaims.set(room.id, member.id);
+  });
+
+  current.rooms = current.rooms.map((room) => {
+    const residentId = roomClaims.get(room.id);
+    if (!residentId) return room;
+    return { ...room, status: 'Occupied', residentId };
+  });
+
+  current.members = current.members.map((member) => {
+    const room = current.rooms.find((item) => item.residentId === member.id);
+    if (room) return { ...member, room: room.number };
+
+    // If the saved member points to a room claimed by somebody else, remove the stale link.
+    if (member.room && member.room !== 'Unassigned') {
+      const savedRoom = current.rooms.find((item) => item.number === member.room);
+      if (savedRoom?.residentId && savedRoom.residentId !== member.id) {
+        return { ...member, room: 'Unassigned' };
+      }
+    }
+    return member;
+  });
+
+  // Ensure every room/member link has an active reservation so the Facilities reservation
+  // table and occupancy numbers tell the same story.
+  const reservations = [...current.reservations];
+  current.rooms.forEach((room) => {
+    if (!room.residentId) return;
+    const hasActive = reservations.some(
+      (reservation) => reservation.status === 'Active' && reservation.roomId === room.id && reservation.memberId === room.residentId,
+    );
+    if (!hasActive) {
+      reservations.push({
+        id: makeId('RS', reservations),
+        roomId: room.id,
+        memberId: room.residentId,
+        startDate: todayISO(),
+        status: 'Active',
+      });
+    }
+  });
+  current.reservations = reservations;
+
+  return current;
+};
+
 const loadSeed = () => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? { ...seed, ...JSON.parse(saved) } : seed;
+    return reconcileRoomState(saved ? { ...seed, ...JSON.parse(saved) } : seed);
   } catch {
-    return seed;
+    return reconcileRoomState(seed);
   }
+};
+
+const applyRoomAssignment = (current, memberId, roomId, startDate = todayISO()) => {
+  const member = current.members.find((item) => item.id === memberId);
+  if (!member) return { ok: false, message: 'Member record could not be found.', next: current };
+
+  const targetRoom = roomId ? current.rooms.find((item) => item.id === roomId) : null;
+  if (roomId && !targetRoom) return { ok: false, message: 'Select a valid room.', next: current };
+
+  if (targetRoom) {
+    const conflictingReservation = current.reservations.some(
+      (reservation) => reservation.status === 'Active' && reservation.roomId === targetRoom.id && reservation.memberId !== memberId,
+    );
+    const occupiedByAnother = targetRoom.residentId && targetRoom.residentId !== memberId;
+    if (targetRoom.status === 'Maintenance') {
+      return { ok: false, message: 'The selected room is currently under maintenance.', next: current };
+    }
+    if (occupiedByAnother || conflictingReservation || (targetRoom.status === 'Occupied' && targetRoom.residentId !== memberId)) {
+      return { ok: false, message: 'The selected room is already occupied.', next: current };
+    }
+  }
+
+  const currentRoom = current.rooms.find((room) => room.residentId === memberId || room.number === member.room);
+  const sameRoom = Boolean(targetRoom && currentRoom?.id === targetRoom.id);
+  const activeSameReservation = targetRoom
+    ? current.reservations.find(
+        (reservation) => reservation.status === 'Active' && reservation.roomId === targetRoom.id && reservation.memberId === memberId,
+      )
+    : null;
+
+  let reservations = current.reservations.map((reservation) => {
+    if (reservation.status !== 'Active' || reservation.memberId !== memberId) return reservation;
+    if (sameRoom && activeSameReservation?.id === reservation.id) return reservation;
+    return { ...reservation, status: 'Cancelled' };
+  });
+
+  let newReservation = activeSameReservation || null;
+  if (targetRoom && !activeSameReservation) {
+    newReservation = {
+      id: makeId('RS', reservations),
+      roomId: targetRoom.id,
+      memberId,
+      startDate: startDate || todayISO(),
+      status: 'Active',
+    };
+    reservations = [...reservations, newReservation];
+  }
+
+  const rooms = current.rooms.map((room) => {
+    if (targetRoom && room.id === targetRoom.id) {
+      return { ...room, status: 'Occupied', residentId: memberId };
+    }
+    if (room.residentId === memberId || (!targetRoom && room.number === member.room)) {
+      return { ...room, status: 'Available', residentId: '' };
+    }
+    return room;
+  });
+
+  const members = current.members.map((item) =>
+    item.id === memberId ? { ...item, room: targetRoom ? targetRoom.number : 'Unassigned' } : item,
+  );
+
+  return {
+    ok: true,
+    reservation: newReservation,
+    next: { ...current, members, rooms, reservations },
+  };
 };
 
 export function AppDataProvider({ children }) {
@@ -49,13 +207,18 @@ export function AppDataProvider({ children }) {
   };
 
   const addMember = (payload) => {
+    const requestedRoom = payload.roomId ? data.rooms.find((room) => room.id === payload.roomId) : null;
+    if (payload.roomId && (!requestedRoom || requestedRoom.status !== 'Available' || requestedRoom.residentId)) {
+      return { ok: false, message: 'The selected room is no longer available.' };
+    }
+
     const member = {
       id: makeId('M', data.members),
       name: payload.name.trim(),
       dob: payload.dob || '',
       phone: payload.phone || '',
       email: payload.email || '',
-      room: payload.room || 'Unassigned',
+      room: 'Unassigned',
       careLevel: payload.careLevel || 'Low',
       status: payload.status || 'Active',
       accessibility: payload.accessibility || 'No special requirement',
@@ -65,12 +228,30 @@ export function AppDataProvider({ children }) {
       careTeam: payload.careTeam || [],
       medications: payload.medications || [],
     };
-    setCollection('members', (items) => [...items, member]);
-    return member;
+
+    let next = { ...data, members: [...data.members, member] };
+    if (payload.roomId) {
+      const assigned = applyRoomAssignment(next, member.id, payload.roomId, payload.startDate || todayISO());
+      if (!assigned.ok) return assigned;
+      next = assigned.next;
+    }
+
+    setData(next);
+    const savedMember = next.members.find((item) => item.id === member.id) || member;
+    return { ok: true, member: savedMember };
   };
 
   const updateMember = (id, payload) => {
-    setCollection('members', (items) => items.map((item) => (item.id === id ? { ...item, ...payload } : item)));
+    // Room allocation is deliberately excluded here. It must go through assignRoomToMember
+    // so Member and Facility data remain synchronised.
+    const { room: _room, roomId: _roomId, ...safePayload } = payload;
+    setCollection('members', (items) => items.map((item) => (item.id === id ? { ...item, ...safePayload } : item)));
+  };
+
+  const assignRoomToMember = (memberId, roomId, startDate = todayISO()) => {
+    const result = applyRoomAssignment(data, memberId, roomId, startDate);
+    if (result.ok) setData(result.next);
+    return { ok: result.ok, message: result.message, reservation: result.reservation };
   };
 
   const addStaff = (payload) => {
@@ -130,34 +311,7 @@ export function AppDataProvider({ children }) {
     setCollection('rooms', (items) => items.map((item) => (item.id === id ? { ...item, ...payload } : item)));
   };
 
-  const reserveRoom = ({ roomId, memberId, startDate }) => {
-    const room = data.rooms.find((item) => item.id === roomId);
-    if (!room || room.status !== 'Available') {
-      return { ok: false, message: 'The selected room is not available.' };
-    }
-    const member = data.members.find((item) => item.id === memberId);
-    if (!member) return { ok: false, message: 'Select a valid member.' };
-
-    const reservation = {
-      id: makeId('RS', data.reservations),
-      roomId,
-      memberId,
-      startDate: startDate || todayISO(),
-      status: 'Active',
-    };
-
-    setData((current) => ({
-      ...current,
-      reservations: [...current.reservations, reservation],
-      rooms: current.rooms.map((item) =>
-        item.id === roomId ? { ...item, status: 'Occupied', residentId: memberId } : item,
-      ),
-      members: current.members.map((item) =>
-        item.id === memberId ? { ...item, room: room.number } : item,
-      ),
-    }));
-    return { ok: true, reservation };
-  };
+  const reserveRoom = ({ roomId, memberId, startDate }) => assignRoomToMember(memberId, roomId, startDate || todayISO());
 
   const cancelReservation = (reservationId) => {
     const reservation = data.reservations.find((item) => item.id === reservationId);
@@ -170,7 +324,9 @@ export function AppDataProvider({ children }) {
         item.id === reservationId ? { ...item, status: 'Cancelled' } : item,
       ),
       rooms: current.rooms.map((item) =>
-        item.id === reservation.roomId ? { ...item, status: 'Available', residentId: '' } : item,
+        item.id === reservation.roomId && item.residentId === reservation.memberId
+          ? { ...item, status: 'Available', residentId: '' }
+          : item,
       ),
       members: current.members.map((item) =>
         item.id === reservation.memberId && room && item.room === room.number ? { ...item, room: 'Unassigned' } : item,
@@ -253,13 +409,14 @@ export function AppDataProvider({ children }) {
     setCollection('schedules', (items) => items.map((item) => (item.id === id ? { ...item, ...payload } : item)));
   };
 
-  const resetDemo = () => setData(seed);
+  const resetDemo = () => setData(reconcileRoomState(seed));
 
   const value = useMemo(
     () => ({
       ...data,
       addMember,
       updateMember,
+      assignRoomToMember,
       addStaff,
       updateStaff,
       addService,

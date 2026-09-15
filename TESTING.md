@@ -62,6 +62,19 @@ Use this checklist after `npm install` and `npm run dev`.
 - [ ] Add Room validates required room number.
 - [ ] Duplicate room number is prevented.
 
+## Member ↔ Facility room synchronisation
+
+- [ ] Create a new member and select an Available room.
+- [ ] The new member profile shows the selected room.
+- [ ] Facilities → Rooms immediately marks that room **Occupied**.
+- [ ] The room shows the new resident name.
+- [ ] Facilities → Reservations contains an Active reservation for the member and room.
+- [ ] Dashboard available-room count decreases by one.
+- [ ] Edit the member and move them to another Available room.
+- [ ] The old room returns to **Available** and the new room becomes **Occupied**.
+- [ ] Edit the member and choose **Unassigned**.
+- [ ] The previous room returns to **Available** and the active reservation becomes Cancelled.
+
 ## F2/F3 — Reservations
 
 - [ ] Only Available rooms appear for new reservation.

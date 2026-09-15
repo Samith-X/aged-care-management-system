@@ -9,24 +9,55 @@ const tabs = ['Overview', 'Care Plan', 'Care Team', 'Medication', 'Contacts'];
 export default function MemberProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { members, staff, updateMember } = useAppData();
+  const { members, staff, rooms, updateMember, assignRoomToMember } = useAppData();
   const member = members.find((item) => item.id === id);
   const [tab, setTab] = useState('Overview');
   const [editOpen, setEditOpen] = useState(false);
+  const [editError, setEditError] = useState('');
   const [medOpen, setMedOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
   const [form, setForm] = useState(member || {});
   const [medForm, setMedForm] = useState({ name: '', dose: '', route: 'Oral', frequency: '', status: 'Active' });
   const [selectedStaff, setSelectedStaff] = useState('');
 
-  const careTeam = useMemo(() => (member?.careTeam || []).map((staffId) => staff.find((item) => item.id === staffId)).filter(Boolean), [member, staff]);
+  const careTeam = useMemo(
+    () => (member?.careTeam || []).map((staffId) => staff.find((item) => item.id === staffId)).filter(Boolean),
+    [member, staff],
+  );
 
   if (!member) {
     return <Card><Notice tone="error">Member not found.</Notice><button className="button button-primary" onClick={() => navigate('/members')}>Back to members</button></Card>;
   }
 
+  const roomForMember = rooms.find((room) => room.residentId === member.id || room.number === member.room);
+  const currentRoomId = roomForMember?.id || '';
+  const selectableRooms = rooms.filter(
+    (room) => room.id === currentRoomId || (room.status === 'Available' && !room.residentId),
+  );
+
+  const openEditor = () => {
+    setEditError('');
+    setForm({ ...member, roomId: currentRoomId });
+    setEditOpen(true);
+  };
+
   const saveEdit = () => {
+    if (!String(form.name || '').trim()) {
+      setEditError('Member name is required.');
+      return;
+    }
+
+    const nextRoomId = form.roomId || '';
+    if (nextRoomId !== currentRoomId) {
+      const roomResult = assignRoomToMember(member.id, nextRoomId);
+      if (!roomResult.ok) {
+        setEditError(roomResult.message || 'The room allocation could not be updated.');
+        return;
+      }
+    }
+
     updateMember(member.id, form);
+    setEditError('');
     setEditOpen(false);
   };
 
@@ -55,15 +86,19 @@ export default function MemberProfile() {
         eyebrow={`${member.id} · ${member.room}`}
         title={member.name}
         description={`DOB ${formatDate(member.dob)} · ${member.careLevel} care level`}
-        actions={<button className="button button-primary" onClick={() => { setForm(member); setEditOpen(true); }}>Edit profile</button>}
+        actions={<button className="button button-primary" onClick={openEditor}>Edit profile</button>}
       />
 
       <div className="profile-hero">
         <div className="profile-avatar">{member.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</div>
-        <div className="profile-meta">
-          <Badge>{member.status}</Badge>
-          <span>{member.phone || 'No phone recorded'}</span>
-          <span>{member.email || 'No email recorded'}</span>
+        <div className="profile-hero-copy">
+          <strong>{member.name}</strong>
+          <div className="profile-meta">
+            <Badge>{member.status}</Badge>
+            <span>Room {member.room}</span>
+            <span>{member.phone || 'No phone recorded'}</span>
+            <span>{member.email || 'No email recorded'}</span>
+          </div>
         </div>
       </div>
 
@@ -77,7 +112,7 @@ export default function MemberProfile() {
             <dl className="detail-list">
               <div><dt>Member ID</dt><dd>{member.id}</dd></div>
               <div><dt>Date of birth</dt><dd>{formatDate(member.dob)}</dd></div>
-              <div><dt>Room</dt><dd>{member.room}</dd></div>
+              <div><dt>Room</dt><dd><span className={member.room === 'Unassigned' ? 'room-unassigned' : 'room-assigned'}>{member.room}</span></dd></div>
               <div><dt>Care level</dt><dd>{member.careLevel}</dd></div>
               <div><dt>Status</dt><dd><Badge>{member.status}</Badge></dd></div>
             </dl>
@@ -97,7 +132,7 @@ export default function MemberProfile() {
       {tab === 'Care Plan' && (
         <Card title="Current care plan" subtitle="Prototype care plan summary used across the system">
           <div className="care-plan-box">{member.carePlan || 'No care plan has been recorded.'}</div>
-          <button className="button button-secondary" onClick={() => { setForm(member); setEditOpen(true); }}>Update care plan</button>
+          <button className="button button-secondary" onClick={openEditor}>Update care plan</button>
         </Card>
       )}
 
@@ -112,7 +147,7 @@ export default function MemberProfile() {
                 <button className="button button-danger-ghost button-small" onClick={() => removeCareTeamMember(person.id)}>Remove</button>
               </div>
             ))}
-            {!careTeam.length && <p className="muted-text">No staff have been assigned to this member's care team.</p>}
+            {!careTeam.length && <p className="muted-text">No staff have been assigned to this member&apos;s care team.</p>}
           </div>
         </Card>
       )}
@@ -133,13 +168,23 @@ export default function MemberProfile() {
         </div>
       )}
 
-      <Modal open={editOpen} title="Edit member profile" onClose={() => setEditOpen(false)} footer={<><button className="button button-ghost" onClick={() => setEditOpen(false)}>Cancel</button><button className="button button-primary" onClick={saveEdit}>Save changes</button></>}>
+      <Modal open={editOpen} title="Edit member profile" onClose={() => { setEditOpen(false); setEditError(''); }} footer={<><button className="button button-ghost" onClick={() => setEditOpen(false)}>Cancel</button><button className="button button-primary" onClick={saveEdit}>Save changes</button></>}>
+        {editError && <Notice tone="error">{editError}</Notice>}
+        <div className="form-section-intro">
+          <strong>Profile & room allocation</strong>
+          <span>Changing the room here also updates Facilities, room availability and reservation history automatically.</span>
+        </div>
         <div className="form-grid">
           <Field label="Full name" required><input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="Date of birth"><input type="date" value={form.dob || ''} onChange={(e) => setForm({ ...form, dob: e.target.value })} /></Field>
           <Field label="Phone"><input value={form.phone || ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
           <Field label="Email"><input value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Room"><input value={form.room || ''} onChange={(e) => setForm({ ...form, room: e.target.value })} /></Field>
+          <Field label="Room allocation" hint="Only available rooms and the resident's current room are shown.">
+            <select value={form.roomId || ''} onChange={(e) => setForm({ ...form, roomId: e.target.value })}>
+              <option value="">Unassigned</option>
+              {selectableRooms.map((room) => <option key={room.id} value={room.id}>{room.number} · {room.type} · {room.wing}{room.id === currentRoomId ? ' (current)' : ''}</option>)}
+            </select>
+          </Field>
           <Field label="Care level"><select value={form.careLevel || 'Low'} onChange={(e) => setForm({ ...form, careLevel: e.target.value })}><option>Low</option><option>Medium</option><option>High</option></select></Field>
           <Field label="Status"><select value={form.status || 'Active'} onChange={(e) => setForm({ ...form, status: e.target.value })}><option>Active</option><option>Inactive</option></select></Field>
           <Field label="Accessibility requirements"><input value={form.accessibility || ''} onChange={(e) => setForm({ ...form, accessibility: e.target.value })} /></Field>

@@ -71,10 +71,10 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-user">
-          <div className="avatar">SB</div>
+          <div className="avatar">2F</div>
           <div className="sidebar-user-copy">
-            <strong>Samith Buthgama</strong>
-            <span>Prototype Administrator</span>
+            <strong>ICT Project A · Team 2F</strong>
+            <span>Development Team</span>
           </div>
         </div>
       </aside>
@@ -92,7 +92,7 @@ export default function Layout() {
           </div>
           <div className="topbar-actions">
             <span className="prototype-pill">Prototype</span>
-            <div className="topbar-avatar">SB</div>
+            <div className="topbar-avatar">2F</div>
           </div>
         </header>
         <main className="content-area">

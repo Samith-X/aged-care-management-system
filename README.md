@@ -2,6 +2,16 @@
 
 Frontend prototype for **ICT30017 Project A — Team 2F**.
 
+
+## Version 1.1 improvements
+
+- Member room allocation is now synchronised with Facility Management.
+- Assigning a room while creating a resident automatically marks the room **Occupied**, links the resident and creates an active reservation.
+- Changing or removing a room from the member profile automatically releases the previous room and updates reservation history.
+- Older prototype data in `localStorage` is repaired on load when a member has a room number but the Facility room was not updated.
+- Personal developer naming was removed from the navigation; the interface now identifies the project as **ICT Project A · Team 2F**.
+- Visual styling was refreshed across navigation, cards, tables, forms, room states and profile pages.
+
 ## What is included
 
 This React prototype implements the main aged-care management modules described in the team specification and user-flow document:
