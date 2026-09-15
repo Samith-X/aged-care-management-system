@@ -1,109 +1,60 @@
 # CareConnect - Aged Care Management System
 
-This project was developed for ICT30017 Project A - Team 2F.
+This project was developed for **ICT30017 Project A - Team 2F**.
 
-CareConnect is a React prototype for an aged care management system. The main aim of the project is to bring different aged care management functions into one system instead of using separate software for each task.
+CareConnect is a React-based prototype for an aged care management system. The system is designed to manage different aged care activities in one place, including residents, staff, services, scheduling, facilities, rooms and inventory.
 
-## Current Version
+## Project Status
 
-The current project includes the React frontend prototype and the basic Supabase connection and database setup.
+The React frontend prototype has been completed.
 
-### Version history
+The project is also connected to the shared **Team 2F Supabase project**, and the basic database structure has been created.
 
-- v1.0 - Initial aged care management prototype
-- v1.1 - Fixed room allocation issues and improved the interface
-- v1.2 - Added Supabase connection and database foundation
+Most frontend functions still use browser `localStorage` for prototype data. The Supabase connection and database foundation are ready for the team to continue with authentication, security and full database integration.
 
-The latest main branch also includes the Supabase database schema and environment setup example.
+## Version History
 
-## Main Features
-
-The prototype currently includes:
-
+### v1.0
+- Initial React prototype
 - Dashboard
-- Member / resident management
+- Member management
 - Staff management
 - Service management
 - Scheduling
 - Facility management
-- Room reservations
-- Maintenance issues
 - Inventory management
-- Medication records
-- Reports
-- Settings
-- Mock login page
 
-## Member Management
+### v1.1
+- Fixed resident room allocation
+- Room status now changes to Occupied when assigned
+- Previous room becomes Available when a resident changes rooms
+- Improved the interface
+- Changed personal developer name to Team 2F
 
-Users can:
+### v1.2
+- Added Supabase JavaScript client
+- Connected React to the Team 2F Supabase project
+- Created the Supabase database structure
+- Added environment configuration
+- Tested the React to Supabase connection successfully
 
-- add and search residents
-- view resident profiles
-- record care plan information
-- record medications
-- add family and emergency contacts
-- assign care team members
-- assign rooms
-
-Room allocation is connected with Facility Management. When a resident is assigned to a room, the prototype updates the room status to Occupied.
-
-## Staff Management
-
-The staff section includes:
-
-- staff profiles
-- role and employment information
-- qualifications
-- credentials
-- availability
-- active/inactive status
-
-## Service Management
-
-Services can include:
-
-- service name and description
-- expected duration
-- activity checklist
-- required staff qualifications
-- required facility
-- active/inactive status
-
-## Scheduling
-
-The scheduling section connects members, services and staff.
+## Main Features
 
 The prototype includes:
 
-- service selection
-- member selection
-- staff selection
-- date and time
-- facility/room information
-- simple conflict checking
-- cancellation
-
-## Facility Management
-
-Facility Management includes:
-
-- room records
-- room availability
-- resident room reservations
-- cancellation of reservations
-- maintenance issues
-
-## Inventory
-
-The inventory section includes:
-
-- inventory items
-- stock quantity
-- minimum stock levels
-- low stock identification
-- stock adjustment
-- medication stock
+- Dashboard
+- Member / Resident Management
+- Staff Management
+- Service Management
+- Scheduling
+- Facility Management
+- Room Reservations
+- Maintenance Issues
+- Inventory Management
+- Medication Records
+- Reports
+- Settings
+- Mock Login Page
 
 ## Technology Used
 
@@ -114,17 +65,12 @@ The inventory section includes:
 - CSS
 - Supabase
 - PostgreSQL
+- Git
 - GitHub
 
-The frontend currently still uses localStorage for most prototype operations.
+## Run the Project
 
-Supabase has been connected and the database structure has been created so the team can progressively replace the local prototype data with database operations.
+Install dependencies:
 
-## Supabase Setup
-
-The project uses the existing Team 2F Supabase project.
-
-The database schema is available in:
-
-```text
-database/careconnect_supabase_schema.sql
+```bash
+npm install
