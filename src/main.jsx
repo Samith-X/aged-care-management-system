@@ -1,7 +1,7 @@
 import { supabase } from './lib/supabaseClient';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router-dom';
 import App from './App';
 import { AppDataProvider } from './context/AppDataContext';
 import './styles.css';
@@ -21,10 +21,10 @@ supabase
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <HashRouter>
       <AppDataProvider>
         <App />
       </AppDataProvider>
-    </BrowserRouter>
+    </HashRouter>
   </React.StrictMode>,
 );
